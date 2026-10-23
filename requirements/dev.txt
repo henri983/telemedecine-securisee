@@ -1,0 +1,21 @@
+# ── Dépendances de développement ── Télémédecine Sécurisée ──
+-r base.txt
+
+# Tests
+pytest>=8.3.0
+pytest-asyncio>=0.24.0
+pytest-cov>=6.0.0
+httpx>=0.28.0
+
+# Linting et formatage
+ruff>=0.8.0
+
+# Analyse de sécurité
+bandit[toml]>=1.8.0
+safety>=3.2.0
+
+# Pre-commit hooks
+pre-commit>=4.0.0
+
+# Vérification de types
+mypy>=1.13.0

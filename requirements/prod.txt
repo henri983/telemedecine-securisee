@@ -1,0 +1,8 @@
+# ── Dépendances de production ── Télémédecine Sécurisée ──
+-r base.txt
+
+# Serveur WSGI production
+gunicorn>=23.0.0
+
+# Monitoring et error tracking
+sentry-sdk[fastapi]>=2.18.0

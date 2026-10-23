@@ -1,0 +1,234 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Télémédecine Sécurisée — CI Pipeline
+# ══════════════════════════════════════════════════════════════════════════════
+# Exécuté sur push (develop, feature/*) et PR (main, develop)
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - develop
+      - "feature/*"
+  pull_request:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  PYTHON_VERSION: "3.12"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ── Lint & Analyse statique ──────────────────────────────────────────────
+  lint:
+    name: "🔍 Lint & Type Check"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Configuration de Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements/dev.txt
+
+      - name: Installation des dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+
+      - name: Ruff — Lint
+        run: python -m ruff check src/ tests/ --output-format=github
+
+      - name: Ruff — Format Check
+        run: python -m ruff format --check src/ tests/
+
+      - name: MyPy — Vérification de types
+        run: python -m mypy src/ --install-types --non-interactive
+
+      - name: Bandit — Analyse de sécurité
+        run: python -m bandit -r src/ -c pyproject.toml -f json -o bandit-report.json || true
+
+      - name: Upload rapport Bandit
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+  # ── Tests ────────────────────────────────────────────────────────────────
+  test:
+    name: "🧪 Tests"
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: telemedecine_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user -d telemedecine_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 30s
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/telemedecine_test
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: test-secret-key-ci-only-not-for-production
+      JWT_SECRET_KEY: test-jwt-secret-key-ci-only-not-for-production
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRATION_MINUTES: 30
+      ENCRYPTION_KEY: dGVzdC1lbmNyeXB0aW9uLWtleS1jaS1vbmx5
+      ENVIRONMENT: testing
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Configuration de Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements/test.txt
+
+      - name: Installation des dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/test.txt
+          pip install -e .
+
+      - name: Lancement des tests avec couverture
+        run: |
+          python -m pytest tests/ \
+            -v \
+            --tb=short \
+            --cov=src/app \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --junitxml=test-results.xml
+
+      - name: Upload des résultats de test
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            coverage.xml
+            test-results.xml
+
+      - name: Upload couverture vers Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── Scan de sécurité ────────────────────────────────────────────────────
+  security:
+    name: "🔒 Security Scan"
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Configuration de Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Installation des outils de sécurité
+        run: |
+          python -m pip install --upgrade pip
+          pip install safety
+
+      - name: Safety — Vérification des vulnérabilités
+        run: safety check --file requirements/base.txt --output json > safety-report.json || true
+
+      - name: Trivy — Scan du filesystem
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: "CRITICAL,HIGH"
+          format: table
+          exit-code: 0
+
+      - name: Upload rapport de sécurité
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: safety-report.json
+
+  # ── Build Docker ────────────────────────────────────────────────────────
+  build:
+    name: "🐳 Docker Build"
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Configuration de Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Connexion au GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extraction des métadonnées Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build et Push de l'image Docker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64

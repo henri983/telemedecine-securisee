@@ -1,0 +1,204 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel>=0.41.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "telemedecine-securisee"
+version = "1.0.0"
+description = "Plateforme de télémédecine sécurisée avec détection de comportements suspects par IA"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "henri983"}
+]
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Healthcare Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Security",
+    "Typing :: Typed",
+]
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "cryptography>=44.0.0",
+    "python-multipart>=0.0.12",
+    "structlog>=24.4.0",
+    "scikit-learn>=1.5.0",
+    "numpy>=2.1.0",
+    "pandas>=2.2.0",
+    "httpx>=0.28.0",
+    "alembic>=1.14.0",
+    "psycopg2-binary>=2.9.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "httpx>=0.28.0",
+    "ruff>=0.8.0",
+    "bandit[toml]>=1.8.0",
+    "safety>=3.2.0",
+    "pre-commit>=4.0.0",
+    "mypy>=1.13.0",
+]
+test = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "httpx>=0.28.0",
+]
+prod = [
+    "gunicorn>=23.0.0",
+    "sentry-sdk[fastapi]>=2.18.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/henri983/telemedecine-securisee"
+Repository = "https://github.com/henri983/telemedecine-securisee"
+Documentation = "https://github.com/henri983/telemedecine-securisee/wiki"
+"Bug Tracker" = "https://github.com/henri983/telemedecine-securisee/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# ── Ruff ──────────────────────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "S",    # bandit (security)
+    "B",    # flake8-bugbear
+    "A",    # flake8-builtins
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez
+    "T20",  # flake8-print
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "S101",   # assert utilisé dans les tests
+    "S104",   # binding to all interfaces (docker)
+    "B008",   # Depends() dans FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S106", "S105"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+# ── Pytest ────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "-ra",
+]
+markers = [
+    "unit: Tests unitaires",
+    "integration: Tests d'intégration",
+    "security: Tests de sécurité",
+    "slow: Tests lents",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+# ── Coverage ──────────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["src/app"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/migrations/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "pass",
+    "\\.\\.\\.",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+# ── MyPy ──────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unreachable = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+show_error_codes = true
+plugins = [
+    "pydantic.mypy",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "passlib.*",
+    "jose.*",
+    "sklearn.*",
+]
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# ── Bandit ────────────────────────────────────────────────────────────────────
+[tool.bandit]
+targets = ["src"]
+exclude_dirs = ["tests", ".venv", "venv"]
+skips = ["B101"]
